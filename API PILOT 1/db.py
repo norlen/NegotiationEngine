@@ -48,12 +48,20 @@ def add_template():
     templates_collection.insert_one({'_id':temp_id,'temp_type':temp_type,'template':temp})
 
 
-def save_user(username, email, password,sign,location):
+#def save_user(username, email, password,sign,location):
+def save_user(username, password):
     password_hash = generate_password_hash(password)
     salt = uuid.uuid4().hex
     hashsign = hashlib.sha256(salt.encode() + password.encode()).hexdigest() + ':' + salt
     
-    users_collection.insert_one({'type':'user','_id': ObjectId(),'username':username, 'email': email, 'password': password_hash,'sign':hashsign,'location':location})
+    users_collection.insert_one({
+        'type': 'user','_id': ObjectId(),
+        'username': username,
+        #'email': email,
+        'password': password_hash,
+        'sign': hashsign,
+        #'location': location
+    })
 
 
 def get_user(username):
@@ -129,33 +137,97 @@ def distance_calc(bidder,owner):
     distance=geodesic(ast.literal_eval(get_distance(bidder)),ast.literal_eval(get_distance(owner))).km
     return distance
 
-def save_room(privacy, room_name, created_by,auction_type, highest_bid,highest_bidder,closing_time,sellersign,buyersign,templatetype):
-    room_id = rooms_collection.insert_one(
-        {'type':'auction','_id':ObjectId(),'privacy':privacy,
-        'payload':{'name': {'val':[room_name]},
-                 'created_by': {'val':[created_by]}, 
-                 'created_at': {'val':[datetime.utcnow()]},
-                 'auction_type':{'val':[auction_type]}, 
-                 'highest_bid':{'val':[highest_bid]},
-                 'highest_bidder':{'val':[highest_bidder]},
-                 'closing_time':{'val':[closing_time]},
-                 'sellersign':{'val':[sellersign]},
-                 'buyersign':{'val':[buyersign]},
-                 'templatetype':{'val':[templatetype]}}}).inserted_id
-    add_room_member(room_id, room_name, created_by, created_by, is_room_admin=True)
-    return room_id
 
-def save_param(room_id,created_by,room_name,reference_sector,reference_type, quantity, articleno):
-    room=rooms_collection.find_one({'_id': ObjectId(room_id)})
-    room_details.insert_one(
-        {'type':'details','_id': ObjectId(room_id),
-        'payload':{'room_name':{'val':[room_name]},
-                'created_by':{'val':[created_by]},
-                'closing_time':{'val':[room['payload']['closing_time']['val'][0]]}, 
-                'reference_sector':{'val':[reference_sector]},
-                'reference_type':{'val':[reference_type]},
-                'quantity':{'val':[quantity]},
-                'articleno':{'val':[articleno]}}})
+def create_new_room(room_name, created_by, auction_type, location, privacy, reference_sector, reference_type, templatetype, closing_time, quantity, members, articleno, sellersign):
+    room_id = save_room(privacy, room_name, created_by, auction_type, closing_time, sellersign, templatetype, location)
+    save_room_details(room_id, room_name, created_by, closing_time, reference_sector, reference_type, quantity, articleno)
+    save_room_members(room_id, room_name, created_by, members)
+    return str(room_id)
+
+
+def save_room(privacy, room_name, created_by, auction_type, closing_time, sellersign, templatetype, location):
+    return rooms_collection.insert_one({
+        '_id': ObjectId(),
+        'type': 'auction',
+        'privacy': privacy,
+        'payload': {
+            'name':             { 'val': [ room_name ] },
+            'created_by':       { 'val': [ created_by ] },
+            'created_at':       { 'val': [ datetime.utcnow() ] },
+            'auction_type':     { 'val': [ auction_type ] },
+            'closing_time':     { 'val': [ closing_time ] },
+            'templatetype':     { 'val': [ templatetype ] },
+            'location':         { 'val': [ location ] },
+            'sellersign':       { 'val': [ sellersign ] },
+            'highest_bid':      { 'val': [ 0 ] },
+            'highest_bidder':   { 'val': [ "" ] },
+            'buyersign':        { 'val': [ "" ] },
+        }
+    }).inserted_id
+
+
+def save_room_details(room_id, room_name, created_by, closing_time, reference_sector, reference_type, quantity, articleno):
+    room_details.insert_one({
+        '_id': ObjectId(room_id),
+        'type': 'details',
+        'payload': {
+            'room_name':        { 'val': [ room_name ] },
+            'created_by':       { 'val': [ created_by ] },
+            'closing_time':     { 'val': [ closing_time ] }, 
+            'reference_sector': { 'val': [ reference_sector ] },
+            'reference_type':   { 'val': [ reference_type ] },
+            'quantity':         { 'val': [ quantity ] },
+            'articleno':        { 'val': [ articleno ] }
+        }
+    })
+
+
+def save_room_members(room_id, room_name, added_by, members):
+    def map_member(member):
+        return {
+            '_id': {
+                'room_id': ObjectId(room_id),
+                'username': member["username"]
+            },
+            'room_name': room_name,
+            'added_by': added_by,
+            'added_at': datetime.utcnow(),
+            'location': member["location"],
+            'offer_id': member["offer_id"],
+            'is_room_admin': True if member["username"] == added_by else False
+        }
+
+    members = list(map(map_member, members))
+    room_members_collection.insert_many(members)
+
+
+# def save_room(privacy, room_name, created_by,auction_type, highest_bid,highest_bidder,closing_time,sellersign,buyersign,templatetype):
+#     room_id = rooms_collection.insert_one(
+#         {'type':'auction','_id':ObjectId(),'privacy':privacy,
+#         'payload':{'name': {'val':[room_name]},
+#                  'created_by': {'val':[created_by]}, 
+#                  'created_at': {'val':[datetime.utcnow()]},
+#                  'auction_type':{'val':[auction_type]}, 
+#                  'highest_bid':{'val':[highest_bid]},
+#                  'highest_bidder':{'val':[highest_bidder]},
+#                  'closing_time':{'val':[closing_time]},
+#                  'sellersign':{'val':[sellersign]},
+#                  'buyersign':{'val':[buyersign]},
+#                  'templatetype':{'val':[templatetype]}}}).inserted_id
+#     add_room_member(room_id, room_name, created_by, created_by, is_room_admin=True)
+#     return room_id
+
+# def save_param(room_id,created_by,room_name,reference_sector,reference_type, quantity, articleno):
+#     room=rooms_collection.find_one({'_id': ObjectId(room_id)})
+#     room_details.insert_one(
+#         {'type':'details','_id': ObjectId(room_id),
+#         'payload':{'room_name':{'val':[room_name]},
+#                 'created_by':{'val':[created_by]},
+#                 'closing_time':{'val':[room['payload']['closing_time']['val'][0]]}, 
+#                 'reference_sector':{'val':[reference_sector]},
+#                 'reference_type':{'val':[reference_type]},
+#                 'quantity':{'val':[quantity]},
+#                 'articleno':{'val':[articleno]}}})
 
 # Currently is not being used
 def update_room(room_id, room_name):

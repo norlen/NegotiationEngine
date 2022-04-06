@@ -1,6 +1,5 @@
 from datetime import datetime
 from dis import dis
-#from turtle import distance
 
 from bson.json_util import dumps
 from flask import Flask, render_template, request, redirect, url_for, jsonify
@@ -14,14 +13,57 @@ import json
 import dateutil.parser
 import logging
 
-from db import (
-    neg_info, save_param2,sign_contract,change_status, get_neg,owned_auctions,get_bidders,find_rooms,distance_calc,
-    ended,get_template,get_t,get_distance,get_room_admin,save_param,add_room_member,add_room_members, save_room2,update_bid,
-    get_closing,get_hb,get_sign,get_hbidder, get_messages, get_room, get_room_members, get_rooms_for_user, get_user, is_room_admin,
-    is_room_member, remove_room_members, save_message, save_room, save_user, update_room, get_room_details, get_room_details_by_ids,
-    get_all_rooms_by_id, get_rooms_by_username, get_negotiations_by_username, create_contract, get_contract, list_contracts,
-    get_negotiation, get_public_rooms, sign_auction_contract, sign_negotiation_contract
-)
+from db import *
+# from db import (
+#     neg_info,
+#     save_param2,
+#     sign_contract,
+#     change_status,
+#     get_neg,
+#     owned_auctions,
+#     get_bidders,
+#     find_rooms,
+#     distance_calc,
+#     ended,
+#     get_template,
+#     get_t,
+#     get_distance,
+#     get_room_admin,
+#     save_param,
+#     add_room_member,
+#     add_room_members,
+#     save_room2,
+#     update_bid,
+#     get_closing,
+#     get_hb,
+#     get_sign,
+#     get_hbidder,
+#     get_messages,
+#     get_room,
+#     get_room_members,
+#     get_rooms_for_user,
+#     get_user,
+#     is_room_admin,
+#     is_room_member,
+#     remove_room_members,
+#     save_message,
+#     save_room,
+#     save_user,
+#     update_room,
+#     get_room_details,
+#     get_room_details_by_ids,
+#     get_all_rooms_by_id,
+#     get_rooms_by_username,
+#     get_negotiations_by_username,
+#     create_contract,
+#     get_contract,
+#     list_contracts,
+#     get_negotiation,
+#     get_public_rooms,
+#     sign_auction_contract,
+#     sign_negotiation_contract,
+#     create_new_room
+# )
 from db import JSONEncoder
 
 app = Flask(__name__)
@@ -40,125 +82,58 @@ def int_or_default(s, default):
     except:
         return default
 
-
-# The login route receives the username and password as a POST request
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if current_user.is_authenticated:
-        return {"message":"The user {} is already authenticated".format(current_user)},200
-
-    message = ''
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password_input = request.form.get('password')
-        user = get_user(username)
-
-        if user and user.check_password(password_input):
-            login_user(user)
-           
-            return {"message":"User {} has been authenticated".format(str(user.username))},200
-        else:
-            message = 'Failed to login!'
-    return message,400
-
-
 # Signup function is not habilitated for the time being, users are to be created either
 # by function or directly into the database
-
 @app.route('/signup', methods=['POST'])
 def signup():
-    if current_user.is_authenticated:
-        return redirect(url_for('home'))
-
     username = request.json.get('username')
-    email = request.json.get('email')
     password = request.json.get('password')
-    sign=request.json.get('sign')
-    location=request.json.get('sign')
+
     try:
-        save_user(username, email, password, sign, location)
+        save_user(username, password)
         return { 'message': "User created" }, 200
     except DuplicateKeyError:
         return { 'message': "User already exists!" }, 400
 
-##holi={"room_name":"Erics composite auction","members":"","highest_bid":"5000","auction_type":"Ascending","closing_time":"2021-07-06T10:34:20","reference_sector":"Composites","reference_type":"Electronic","quantity":"15","templatetype":"article","articleno":"23dd"}
-
-
-# A request to this function will log out the user from the server
-
-@app.route("/logout/")
-@login_required
-def logout():
-    logout_user()
-    return {'message':'the user has logged out'},200
-
 
 # Use a POST request to create a new auction, user has to be logged in
-
-@app.route('/create-room', methods=['GET', 'POST'])
-#@login_required
+@app.route('/create-room', methods=['POST'])
 def create_room():
-    if request.method == 'POST':
-        privacy= request.form.get('privacy')
-        room_name = request.form.get('room_name')
-        highest_bid=request.form.get('highest_bid')
-        highest_bidder=''
-        auction_type=request.form.get('auction_type')
-        closing_time=dateutil.parser.isoparse(request.form.get('closing_time'))
-        reference_sector=request.form.get('reference_sector')
-        reference_type=request.form.get('reference_type')
-        quantity=request.form.get('quantity')
-        articleno=request.form.get('articleno')
-        user=request.authorization.username
-        sellersign=get_sign(user)
-        buyersign=''
-        templatetype=request.form.get('templatetype')
-        if(request.form.get('members')):
-            usernames = [username.strip() for username in request.form.get('members').split(',')]
-        else: 
-            usernames=[user]
+    user = request.authorization.username
 
-        if len(room_name) and len(usernames):
-                      
-            room_id = save_room(privacy, room_name, user,auction_type,highest_bid,highest_bidder,closing_time,sellersign,buyersign,templatetype)
-            save_param(room_id,user,room_name,reference_sector,reference_type,quantity,articleno)
-            if user in usernames:
-                usernames.remove(user)
-            if len(usernames)>=1:
-                add_room_members(room_id, room_name, usernames, user)
-            return {"message":"The room {} has been created id: {}".format(str(room_name),room_id)},200
-        else:
-            return {"message":"Unable to create room"},400
+    body = {
+        "room_name": request.json.get("room_name"),
+        "auction_type": request.json.get("auction_type"),
+        "location": request.json.get("location"),
+        "privacy": request.json.get("privacy"),
+        "reference_sector": request.json.get("reference_sector"),
+        "reference_type": request.json.get("reference_type"),
+        "templatetype": request.json.get("templatetype"),
+        "closing_time": dateutil.parser.isoparse(request.json.get("closing_time")),
+        "quantity": request.json.get("quantity"),
+        "members": request.json.get("members"),
 
+        "articleno": request.json.get("articleno"),
+    }
+    for (key, value) in body.items():
+        if value is None:
+            return { "message": "{} must be present".format(key) }, 400
+    
+    body["sellersign"] = get_sign(user)
+    body["created_by"] = user
 
-# Edit room also is not enabled but should work with little effort if needed
+    # Add the creator as a member.
+    body["members"].append({
+        "username": user,
+        "offer_id": None,
+        "location": body["location"],
+    })
 
-@app.route('/rooms/<room_id>/edit', methods=['GET', 'POST'])
-@login_required
-def edit_room(room_id):
-    room = get_room(room_id)
-    if room and is_room_admin(room_id, current_user.username):
-        existing_room_members = [member['_id']['username'] for member in get_room_members(room_id)]
-        room_members_str = ",".join(existing_room_members)
-        message = ''
-        if request.method == 'POST':
-            room_name = request.json.get('room_name')
-            room['name'] = room_name
-            update_room(room_id, room_name)
-
-            new_members = [username.strip() for username in request.json.get('members').split(',')]
-            members_to_add = list(set(new_members) - set(existing_room_members))
-            members_to_remove = list(set(existing_room_members) - set(new_members))
-            if len(members_to_add):
-                add_room_members(room_id, room_name, members_to_add, current_user.username)
-            if len(members_to_remove):
-                remove_room_members(room_id, members_to_remove)
-            message = 'Room edited successfully'
-            room_members_str = ",".join(new_members)
-        return render_template('edit_room.html', room=room, room_members_str=room_members_str, message=message)
-    else:
-        return "Room not found", 404
+    room_id = create_new_room(**body)
+    return {
+        "message": "Room {} has been created id: {}".format(str(body["room_name"]), room_id),
+        "id": room_id,
+    }, 200
 
 
 # GET request to this route has to include room_id for the room you want to join but no aditional parameters are needed
@@ -177,10 +152,7 @@ def join_room(room_id):
             return {"message":"You are already in a room"},200
         add_room_member(room_id, room_name, new_members, user)
 
-        
     return {"message":"You have joined the room {}".format(str(room_name))},200
-
-
 
 
 # A POST request to this route will receive parameter message_input and will generate a bid to the auction
